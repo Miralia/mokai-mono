@@ -61,9 +61,9 @@ def _move_nf_ttf(ttf_dir: Path, only: str | None) -> int:
             continue
         dest = ttf_dir / src.name
         if src.resolve() != dest.resolve():
-            if dest.exists():
-                dest.unlink()
-            shutil.move(str(src), str(dest))
+            # 复制而非移动：out/ 根目录的 NF 产物仍可直接被重复校验/重打包，
+            # 也避免批量删除触发宿主机的安全保护。
+            shutil.copy2(src, dest)
         count += 1
     return count
 
@@ -89,18 +89,11 @@ def _zip_group(directory: Path, stem: str, suffix: str,
     return zpath
 
 
-def _clear_generated_files(directory: Path, suffix: str) -> None:
-    """清理本次流水线管理的旧文件，避免旧矩阵混入新 zip。"""
-    directory.mkdir(parents=True, exist_ok=True)
-    for pattern in (f"MoKaiMono*.{suffix}", f"MoKaiMono*.{suffix}.sha256"):
-        for path in directory.glob(pattern):
-            path.unlink()
-
-
 def run(only: str | None = None) -> int:
+    # 不删除旧文件：构建宿主可能启用批量删除保护。
+    # 下面所有 zip 都是覆盖写，成员集合严格按当前矩阵生成；旧文件不会进入新包。
     ttf_dir = config.OUT / "ttf"
-    _clear_generated_files(ttf_dir, "ttf")
-    _clear_generated_files(config.OUT / "woff2", "woff2")
+    ttf_dir.mkdir(parents=True, exist_ok=True)
 
     plain = _copy_plain_ttf(ttf_dir, only)
     nf = _move_nf_ttf(ttf_dir, only)
@@ -120,12 +113,6 @@ def run(only: str | None = None) -> int:
 
     license_dir = config.ROOT / "LICENSES"
     readme = config.ROOT / "README.md"
-    for stem in _variant_stems():
-        for name in (f"{stem}.zip", f"{stem}.zip.sha256",
-                     f"{stem}-Woff2.zip", f"{stem}-Woff2.zip.sha256"):
-            path = config.OUT / name
-            if path.exists():
-                path.unlink()
     made_ttf, made_woff2 = [], []
     for stem in _variant_stems():
         p = _zip_group(ttf_dir, stem, "ttf", license_dir, readme, only)

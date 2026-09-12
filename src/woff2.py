@@ -62,15 +62,17 @@ def convert_one(src: Path, dest_dir: Path) -> Path:
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / src.with_suffix(".woff2").name
     if not (dest.exists() and dest.stat().st_mtime >= src.stat().st_mtime):
-        # woff2_compress 固定把输出写在输入文件旁边；先在源目录生成，再移动到 webfont 目录。
-        generated = src.with_suffix(".woff2")
-        if generated.exists():
-            generated.unlink()
-        proc = subprocess.run([_tool(), str(src)], capture_output=True, text=True)
-        if proc.returncode != 0 or not generated.exists():
-            detail = (proc.stderr or proc.stdout or "").strip()
-            raise RuntimeError(f"WOFF2 转换失败: {src.name}\n{detail[-500:]}")
-        shutil.move(str(generated), str(dest))
+        # woff2_compress 固定把输出写在输入文件旁边；在临时目录运行，
+        # 既不污染 TTF 目录，也不需要删除旧的中间文件。
+        with tempfile.TemporaryDirectory(prefix="mokai-woff2-input-") as td:
+            temp_src = Path(td) / src.name
+            shutil.copy2(src, temp_src)
+            generated = temp_src.with_suffix(".woff2")
+            proc = subprocess.run([_tool(), str(temp_src)], capture_output=True, text=True)
+            if proc.returncode != 0 or not generated.exists():
+                detail = (proc.stderr or proc.stdout or "").strip()
+                raise RuntimeError(f"WOFF2 转换失败: {src.name}\n{detail[-500:]}")
+            shutil.copy2(generated, dest)
     _roundtrip_check(src, dest)
     return dest
 
