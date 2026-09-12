@@ -1,0 +1,6 @@
+{
+  "_comment": "上游版本锁。watch-upstream 工作流会比对上游最新发布，有变化才触发构建。",
+  "iosevka": "v34.8.1",
+  "wenkai_gb": "v1.522",
+  "zhenkai": "v0.825"
+}

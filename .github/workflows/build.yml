@@ -1,0 +1,128 @@
+name: build
+
+on:
+  workflow_dispatch:
+    inputs:
+      iosevka:
+        description: "Iosevka tag（留空则用 config 里的默认值）"
+        required: false
+      wenkai_gb:
+        description: "LXGW WenKai GB tag"
+        required: false
+      zhenkai:
+        description: "LXGW ZhenKai tag"
+        required: false
+      release:
+        description: "构建完成后创建 Release"
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      iosevka: { type: string, required: false }
+      wenkai_gb: { type: string, required: false }
+      zhenkai: { type: string, required: false }
+      release: { type: boolean, required: false, default: false }
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "config/**"
+      - ".github/workflows/build.yml"
+
+concurrency:
+  # 同一上游版本组合只允许一个构建在跑
+  group: build-${{ github.ref }}-${{ inputs.iosevka || 'default' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      MOKAI_IOSEVKA_TAG: ${{ inputs.iosevka }}
+      MOKAI_WENKAI_TAG: ${{ inputs.wenkai_gb }}
+      MOKAI_ZHENKAI_TAG: ${{ inputs.zhenkai }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: 安装依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y woff2
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 准备 font-patcher（固定版本与摘要）
+        run: |
+          # Docker 镜像按 digest 固定；FontPatcher.zip 按 SHA-256 固定。
+          docker pull nerdfonts/patcher@sha256:5afde49c2b29eb5628bcae0b5e814acc32d39335631228d6532455f9dbe02d3a
+          mkdir -p work/upstream/fontpatcher
+          curl -sSL -o fp.zip \
+            https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/FontPatcher.zip
+          echo "42bcb32145499a35732274c7fc48deb434ad0d2e0e118f98527c1479c6fa251a  fp.zip" | sha256sum -c -
+          unzip -o -q fp.zip -d work/upstream/fontpatcher
+
+      - name: 缓存上游产物
+        uses: actions/cache@v4
+        with:
+          path: |
+            work/upstream/*.zip
+            work/upstream/*.ttf
+            work/upstream/iosevka*
+            work/upstream/unhinted-*
+          key: upstream-${{ inputs.iosevka || 'v34.8.1' }}-${{ inputs.wenkai_gb || 'v1.522' }}-${{ inputs.zhenkai || 'v0.825' }}
+
+      - name: 下载上游产物
+        run: python src/build.py fetch
+
+      - name: 抓取上游许可证
+        run: python src/build.py licenses
+
+      - name: 裁剪骨架 + 注入合并
+        run: python src/build.py merge
+
+      - name: 打 Nerd Fonts 补丁
+        env:
+          # 走固定 digest 的官方镜像，避免系统 FontForge 版本漂移
+          MOKAI_PATCHER_MODE: docker
+        run: python src/build.py patch
+
+      - name: 打包
+        run: python src/build.py package
+
+      - name: 生成样张
+        run: |
+          for sp in slab slab-nl term term-nl; do
+            python src/build.py specimen --spacing "$sp"
+          done
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: mokai-mono-${{ github.run_number }}
+          path: |
+            out/*.zip
+            out/*.sha256
+            work/specimen/*.png
+          retention-days: 30
+
+      - name: 创建 Release
+        if: inputs.release == true || inputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="v${{ github.run_number }}-io${{ inputs.iosevka || '34.8.1' }}"
+          gh release create "$tag" \
+            --title "$tag" \
+            --generate-notes \
+            out/*.zip out/*.sha256 work/specimen/*.png

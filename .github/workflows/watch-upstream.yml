@@ -1,0 +1,93 @@
+name: watch-upstream
+
+# 上游一旦发新版就自动触发构建。
+#
+# ⚠️ 三个上游仓库都没有为我们提供 webhook，所以只能**轮询 Releases API**。
+#    认证后的 API 限额是 5000 次/小时，匿名只有 60 次/小时 —— 必须带 token。
+
+on:
+  schedule:
+    - cron: "0 3 * * *"        # 每日 UTC 03:00（北京时间 11:00）
+  workflow_dispatch:
+
+permissions:
+  contents: write              # 回写 upstream.lock.json
+  actions: write               # 触发 build 工作流
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 查询上游最新正式版
+        id: upstream
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          latest() {
+            curl -sSL --fail \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$1/releases/latest" \
+            | jq -r '.tag_name'
+          }
+          # 注意：releases/latest 会跳过预发布版（-rc / -beta），
+          # 这正是我们想要的 —— 默认只跟正式版。
+          echo "iosevka=$(latest be5invis/Iosevka)"   >> "$GITHUB_OUTPUT"
+          echo "wenkai_gb=$(latest lxgw/LxgwWenKaiGB)" >> "$GITHUB_OUTPUT"
+          echo "zhenkai=$(latest lxgw/LxgwZhenKai)"   >> "$GITHUB_OUTPUT"
+
+      - name: 与版本锁比对
+        id: diff
+        run: |
+          set -euo pipefail
+          lock=config/upstream.lock.json
+          changed=false
+          report=""
+          for key in iosevka wenkai_gb zhenkai; do
+            old=$(jq -r ".$key" "$lock")
+            new="${{ steps.upstream.outputs[key] }}"
+            if [ "$old" != "$new" ]; then
+              changed=true
+              report="$report- **$key**: \`$old\` → \`$new\`"$'\n'
+            fi
+          done
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+          {
+            echo "report<<EOF"
+            echo "$report"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: 无变化则结束
+        if: steps.diff.outputs.changed != 'true'
+        run: echo "上游无更新，跳过。"
+
+      - name: 写回版本锁
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          jq --arg i "${{ steps.upstream.outputs.iosevka }}" \
+             --arg w "${{ steps.upstream.outputs.wenkai_gb }}" \
+             --arg z "${{ steps.upstream.outputs.zhenkai }}" \
+             '.iosevka=$i | .wenkai_gb=$w | .zhenkai=$z' \
+             config/upstream.lock.json > lock.tmp
+          mv lock.tmp config/upstream.lock.json
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add config/upstream.lock.json
+          git commit -m "chore: 上游版本更新"$'\n\n'"${{ steps.diff.outputs.report }}"
+          git push
+
+      - name: 触发构建
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run build.yml \
+            -f iosevka="${{ steps.upstream.outputs.iosevka }}" \
+            -f wenkai_gb="${{ steps.upstream.outputs.wenkai_gb }}" \
+            -f zhenkai="${{ steps.upstream.outputs.zhenkai }}" \
+            -f release=true

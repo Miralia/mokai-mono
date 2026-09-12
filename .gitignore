@@ -1,0 +1,27 @@
+# 构建产物
+work/
+out/
+
+# 字体二进制（发布走 GitHub Releases，不入库）
+*.ttf
+*.otf
+*.woff
+*.woff2
+*.ttc
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 系统
+.DS_Store
+
+# 展示图例外：README 需要引用，随仓库分发
+!docs/images/*.png
+
+# 会话/工具数据，不属于项目
+.workbuddy-ai/
+.claude/
+.cursor/
