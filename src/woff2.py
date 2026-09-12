@@ -9,6 +9,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from fontTools.ttLib import TTFont
@@ -84,10 +85,16 @@ def convert_all(ttf_dir: Path | None = None,
     sources = sorted(ttf_dir.glob("*.ttf"))
     if not sources:
         raise RuntimeError(f"没有找到 TTF: {ttf_dir}")
-    result = []
-    for src in sources:
-        out = convert_one(src, woff2_dir)
-        result.append(out)
-        print(f"  {src.name:<48} → {out.stat().st_size / 1048576:>6.1f} MB")
+    jobs = max(1, int(os.environ.get("MOKAI_WOFF2_JOBS", "4")))
+    result: list[Path] = []
+    print(f"WOFF2 并行度: {jobs}")
+    with ThreadPoolExecutor(max_workers=jobs) as pool:
+        futures = {pool.submit(convert_one, src, woff2_dir): src for src in sources}
+        for future in as_completed(futures):
+            src = futures[future]
+            out = future.result()
+            result.append(out)
+            print(f"  {src.name:<48} → {out.stat().st_size / 1048576:>6.1f} MB")
+    result.sort()
     print(f"WOFF2 共 {len(result)} 个: {woff2_dir}")
     return result
