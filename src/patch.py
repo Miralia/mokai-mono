@@ -133,6 +133,10 @@ def restore_widths(merged: Path, patched: Path, out: Path) -> Counter:
         else:
             stats["already_correct"] += 1
 
+    # GitHub Actions 从 checkout 开始时不会自动创建 out/；
+    # 必须在保存最终字体前创建父目录，否则会出现：
+    #   [Errno 2] No such file or directory: .../out/MoKaiMono-NF-CN-*.ttf
+    out.parent.mkdir(parents=True, exist_ok=True)
     f.save(str(out))
     f.close()
     return stats
@@ -168,6 +172,11 @@ def _finish(src: Path, spacing: str, weight: str, hinted: bool) -> tuple[Path, b
 
 
 def run(only: str | None = None, spacing: str | None = None) -> int:
+    # merge 阶段只写 work/merged；CI 在 patch 前通常还没有 out/。
+    # 在启动线程池前创建，避免所有变体在最后保存阶段同时失败。
+    config.OUT.mkdir(parents=True, exist_ok=True)
+    config.PATCHED.mkdir(parents=True, exist_ok=True)
+
     print(f"FontForge 版本: {fontforge_version()}")
     print(f"font-patcher 参数: {' '.join(config.NERD_PATCHER_ARGS)}")
     print(f"并行度: {config.PATCH_JOBS}")

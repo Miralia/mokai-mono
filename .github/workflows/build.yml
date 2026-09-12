@@ -96,7 +96,9 @@ jobs:
           # Docker patcher 内部 PN=1，外层只开 2 路，避免嵌套并行导致 OOM。
           MOKAI_PATCHER_MODE: docker
           MOKAI_PATCH_JOBS: "2"
-        run: python src/build.py patch
+        run: |
+          mkdir -p out work/patched
+          python src/build.py patch
 
       - name: 打包
         run: python src/build.py package
