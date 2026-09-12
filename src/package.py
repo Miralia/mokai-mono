@@ -54,7 +54,7 @@ def _copy_plain_ttf(ttf_dir: Path, only: str | None) -> int:
     return count
 
 
-def _move_nf_ttf(ttf_dir: Path, only: str | None) -> int:
+def _copy_nf_ttf(ttf_dir: Path, only: str | None) -> int:
     count = 0
     for src in sorted(config.OUT.glob("MoKaiMono*-NF-*.ttf")):
         if only and not src.stem.endswith(f"-{only}"):
@@ -96,7 +96,7 @@ def run(only: str | None = None) -> int:
     ttf_dir.mkdir(parents=True, exist_ok=True)
 
     plain = _copy_plain_ttf(ttf_dir, only)
-    nf = _move_nf_ttf(ttf_dir, only)
+    nf = _copy_nf_ttf(ttf_dir, only)
     print(f"普通版收拢: {plain} 个")
     print(f"NF 版收拢: {nf} 个")
 
