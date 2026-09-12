@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       iosevka:
-        description: "Iosevka tag（留空则用 config 里的默认值）"
+        description: "Iosevka tag (leave blank to use the default in config)"
         required: false
       wenkai_gb:
         description: "LXGW WenKai GB tag"
@@ -13,7 +13,7 @@ on:
         description: "LXGW ZhenKai tag"
         required: false
       release:
-        description: "构建完成后创建 Release"
+        description: "Create a release after the build completes"
         type: boolean
         default: false
   workflow_call:
@@ -30,7 +30,7 @@ on:
       - ".github/workflows/build.yml"
 
 concurrency:
-  # 同一上游版本组合只允许一个构建在跑
+  # Allow only one build for the same upstream version combination.
   group: build-${{ github.ref }}-${{ inputs.iosevka || 'default' }}
   cancel-in-progress: false
 
@@ -54,16 +54,16 @@ jobs:
           python-version: "3.13"
           cache: pip
 
-      - name: 安装依赖
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y woff2
+          sudo apt-get install -y fonts-noto-cjk woff2
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: 准备 font-patcher（固定版本与摘要）
+      - name: Prepare font-patcher (pinned version and digest)
         run: |
-          # Docker 镜像按 digest 固定；FontPatcher.zip 按 SHA-256 固定。
+          # Pin the Docker image by digest and FontPatcher.zip by SHA-256.
           docker pull nerdfonts/patcher@sha256:5afde49c2b29eb5628bcae0b5e814acc32d39335631228d6532455f9dbe02d3a
           mkdir -p work/upstream/fontpatcher
           curl -sSL -o fp.zip \
@@ -71,7 +71,7 @@ jobs:
           echo "42bcb32145499a35732274c7fc48deb434ad0d2e0e118f98527c1479c6fa251a  fp.zip" | sha256sum -c -
           unzip -o -q fp.zip -d work/upstream/fontpatcher
 
-      - name: 缓存上游产物
+      - name: Cache upstream artifacts
         uses: actions/cache@v4
         with:
           path: |
@@ -81,35 +81,36 @@ jobs:
             work/upstream/unhinted-*
           key: upstream-${{ inputs.iosevka || 'v34.8.1' }}-${{ inputs.wenkai_gb || 'v1.522' }}-${{ inputs.zhenkai || 'v0.825' }}
 
-      - name: 下载上游产物
+      - name: Download upstream artifacts
         run: python src/build.py fetch
 
-      - name: 抓取上游许可证
+      - name: Fetch upstream licenses
         run: python src/build.py licenses
 
-      - name: 裁剪骨架 + 注入合并
+      - name: Prune skeletons and merge CJK glyphs
         run: python src/build.py merge
 
-      - name: 打 Nerd Fonts 补丁
+      - name: Patch with Nerd Fonts
         env:
-          # 走固定 digest 的官方镜像，避免系统 FontForge 版本漂移。
-          # Docker patcher 内部 PN=1，外层只开 2 路，避免嵌套并行导致 OOM。
+          # Use the pinned official image to avoid system FontForge drift.
+          # Keep the outer pool at two workers and the Docker patcher at PN=1
+          # to avoid nested parallelism and out-of-memory failures.
           MOKAI_PATCHER_MODE: docker
           MOKAI_PATCH_JOBS: "2"
         run: |
           mkdir -p out work/patched
           python src/build.py patch
 
-      - name: 打包
+      - name: Package fonts
         run: python src/build.py package
 
-      - name: 生成样张
+      - name: Generate specimens
         run: |
           for sp in slab slab-nl term term-nl; do
             python src/build.py specimen --spacing "$sp"
           done
 
-      - name: 上传构建产物
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: mokai-mono-${{ github.run_number }}
@@ -119,7 +120,7 @@ jobs:
             work/specimen/*.png
           retention-days: 30
 
-      - name: 创建 Release
+      - name: Create release
         if: inputs.release == true || inputs.release == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

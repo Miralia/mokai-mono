@@ -1,18 +1,19 @@
 name: watch-upstream
 
-# 上游一旦发新版就自动触发构建。
+# Automatically trigger a build when an upstream project publishes a release.
 #
-# ⚠️ 三个上游仓库都没有为我们提供 webhook，所以只能**轮询 Releases API**。
-#    认证后的 API 限额是 5000 次/小时，匿名只有 60 次/小时 —— 必须带 token。
+# The three upstream repositories do not provide webhooks, so this workflow
+# polls the Releases API. Authenticated requests allow 5,000 calls/hour;
+# anonymous requests allow only 60 calls/hour, so a token is required.
 
 on:
   schedule:
-    - cron: "0 3 * * *"        # 每日 UTC 03:00（北京时间 11:00）
+    - cron: "0 3 * * *"        # Daily at 03:00 UTC (11:00 Beijing time).
   workflow_dispatch:
 
 permissions:
-  contents: write              # 回写 upstream.lock.json
-  actions: write               # 触发 build 工作流
+  contents: write              # Update upstream.lock.json.
+  actions: write               # Trigger the build workflow.
 
 jobs:
   watch:
@@ -20,7 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 查询上游最新正式版
+      - name: Check the latest upstream releases
         id: upstream
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -33,13 +34,13 @@ jobs:
               "https://api.github.com/repos/$1/releases/latest" \
             | jq -r '.tag_name'
           }
-          # 注意：releases/latest 会跳过预发布版（-rc / -beta），
-          # 这正是我们想要的 —— 默认只跟正式版。
+          # releases/latest skips pre-releases (-rc / -beta), which is what
+          # we want: track stable releases by default.
           echo "iosevka=$(latest be5invis/Iosevka)"   >> "$GITHUB_OUTPUT"
           echo "wenkai_gb=$(latest lxgw/LxgwWenKaiGB)" >> "$GITHUB_OUTPUT"
           echo "zhenkai=$(latest lxgw/LxgwZhenKai)"   >> "$GITHUB_OUTPUT"
 
-      - name: 与版本锁比对
+      - name: Compare with the version lock
         id: diff
         env:
           NEW_IOSEVKA: ${{ steps.upstream.outputs.iosevka }}
@@ -56,7 +57,7 @@ jobs:
             old=$(jq -r ".$key" "$lock")
             if [ "$old" != "$new" ]; then
               changed=true
-              report="$report- **$key**: \`$old\` → \`$new\`"$'\n'
+              report="$report- **$key**: \`$old\` -> \`$new\`"$'\n'
             fi
           }
           compare iosevka "$NEW_IOSEVKA"
@@ -69,11 +70,11 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: 无变化则结束
+      - name: Stop when unchanged
         if: steps.diff.outputs.changed != 'true'
-        run: echo "上游无更新，跳过。"
+        run: echo "No upstream updates; skipping."
 
-      - name: 写回版本锁
+      - name: Update the version lock
         if: steps.diff.outputs.changed == 'true'
         env:
           NEW_IOSEVKA: ${{ steps.upstream.outputs.iosevka }}
@@ -94,7 +95,7 @@ jobs:
           git commit -m "chore: update upstream versions" -m "$CHANGE_REPORT"
           git push
 
-      - name: 触发构建
+      - name: Trigger the build
         if: steps.diff.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

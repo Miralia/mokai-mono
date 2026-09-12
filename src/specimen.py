@@ -43,7 +43,10 @@ LABEL_FONTS = [
     ("/System/Library/Fonts/PingFang.ttc", 0),
     ("/System/Library/Fonts/Supplemental/Songti.ttc", 0),
     ("/System/Library/Fonts/Supplemental/Arial Unicode.ttf", 0),
-    ("/System/Library/Fonts/Helvetica.ttc", 0),
+    ("/System/Library/Fonts/Hiragino Sans GB.ttc", 0),
+    ("/System/Library/Fonts/STHeiti Medium.ttc", 0),
+    ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", 2),
+    ("/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc", 2),
 ]
 
 CODE_SAMPLE = [
@@ -84,11 +87,13 @@ GRID_ROWS = [
 ]
 
 
-def _label_path() -> tuple[str, int]:
+def _label_path(fallback: Path | str | None = None) -> tuple[str, int]:
     for path, idx in LABEL_FONTS:
-        if Path(path).exists():
+        if Path(path).is_file():
             return path, idx
-    return LABEL_FONTS[-1]
+    if fallback is not None and Path(fallback).is_file():
+        return str(fallback), 0
+    raise FileNotFoundError("No usable font is available for specimen labels")
 
 
 class Canvas:
@@ -119,7 +124,7 @@ def showcase(font_path: Path, out_path: Path, *, size: int = 30,
     meta = meta or {}
     c = Canvas()
     body = tr.TextRenderer(font_path, size)
-    lpath, lidx = _label_path()
+    lpath, lidx = _label_path(font_path)
     lab = tr.TextRenderer(lpath, 15, lidx)
     lab_s = tr.TextRenderer(lpath, 13, lidx)
     title_r = tr.TextRenderer(lpath, 33, lidx)
@@ -214,7 +219,7 @@ def showcase(font_path: Path, out_path: Path, *, size: int = 30,
 def lineup(fonts: list[tuple[str, Path]], out_path: Path, *, size: int = 28) -> Path:
     """字重对比图：同一段样例按字重堆叠，叠加等宽栅格。"""
     c = Canvas()
-    lpath, lidx = _label_path()
+    lpath, lidx = _label_path(fonts[0][1] if fonts else None)
     head = tr.TextRenderer(lpath, 20, lidx)
     tag = tr.TextRenderer(lpath, 15, lidx)
     sample = [
