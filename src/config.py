@@ -76,8 +76,6 @@ IOSEVKA = {
 }
 
 CJK_UPSTREAMS = {
-    "LXGWWenKaiGB-Light.ttf":
-        f"https://github.com/lxgw/LxgwWenKaiGB/releases/download/{WENKAI_TAG}/",
     "LXGWWenKaiGB-Regular.ttf":
         f"https://github.com/lxgw/LxgwWenKaiGB/releases/download/{WENKAI_TAG}/",
     "LXGWWenKaiGB-Medium.ttf":

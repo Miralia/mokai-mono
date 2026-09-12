@@ -41,19 +41,27 @@ jobs:
 
       - name: 与版本锁比对
         id: diff
+        env:
+          NEW_IOSEVKA: ${{ steps.upstream.outputs.iosevka }}
+          NEW_WENKAI_GB: ${{ steps.upstream.outputs.wenkai_gb }}
+          NEW_ZHENKAI: ${{ steps.upstream.outputs.zhenkai }}
         run: |
           set -euo pipefail
           lock=config/upstream.lock.json
           changed=false
           report=""
-          for key in iosevka wenkai_gb zhenkai; do
+          compare() {
+            local key="$1"; local new="$2"
+            local old
             old=$(jq -r ".$key" "$lock")
-            new="${{ steps.upstream.outputs[key] }}"
             if [ "$old" != "$new" ]; then
               changed=true
               report="$report- **$key**: \`$old\` → \`$new\`"$'\n'
             fi
-          done
+          }
+          compare iosevka "$NEW_IOSEVKA"
+          compare wenkai_gb "$NEW_WENKAI_GB"
+          compare zhenkai "$NEW_ZHENKAI"
           echo "changed=$changed" >> "$GITHUB_OUTPUT"
           {
             echo "report<<EOF"
@@ -67,27 +75,35 @@ jobs:
 
       - name: 写回版本锁
         if: steps.diff.outputs.changed == 'true'
+        env:
+          NEW_IOSEVKA: ${{ steps.upstream.outputs.iosevka }}
+          NEW_WENKAI_GB: ${{ steps.upstream.outputs.wenkai_gb }}
+          NEW_ZHENKAI: ${{ steps.upstream.outputs.zhenkai }}
+          CHANGE_REPORT: ${{ steps.diff.outputs.report }}
         run: |
           set -euo pipefail
-          jq --arg i "${{ steps.upstream.outputs.iosevka }}" \
-             --arg w "${{ steps.upstream.outputs.wenkai_gb }}" \
-             --arg z "${{ steps.upstream.outputs.zhenkai }}" \
+          jq --arg i "$NEW_IOSEVKA" \
+             --arg w "$NEW_WENKAI_GB" \
+             --arg z "$NEW_ZHENKAI" \
              '.iosevka=$i | .wenkai_gb=$w | .zhenkai=$z' \
              config/upstream.lock.json > lock.tmp
           mv lock.tmp config/upstream.lock.json
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add config/upstream.lock.json
-          git commit -m "chore: 上游版本更新"$'\n\n'"${{ steps.diff.outputs.report }}"
+          git commit -m "chore: update upstream versions" -m "$CHANGE_REPORT"
           git push
 
       - name: 触发构建
         if: steps.diff.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEW_IOSEVKA: ${{ steps.upstream.outputs.iosevka }}
+          NEW_WENKAI_GB: ${{ steps.upstream.outputs.wenkai_gb }}
+          NEW_ZHENKAI: ${{ steps.upstream.outputs.zhenkai }}
         run: |
           gh workflow run build.yml \
-            -f iosevka="${{ steps.upstream.outputs.iosevka }}" \
-            -f wenkai_gb="${{ steps.upstream.outputs.wenkai_gb }}" \
-            -f zhenkai="${{ steps.upstream.outputs.zhenkai }}" \
+            -f iosevka="$NEW_IOSEVKA" \
+            -f wenkai_gb="$NEW_WENKAI_GB" \
+            -f zhenkai="$NEW_ZHENKAI" \
             -f release=true
