@@ -250,8 +250,9 @@ NERD_DOCKER_IMAGE = (
 NERD_PATCHER_RELEASE = "v3.5.1"
 NERD_PATCHER_SHA256 = "42bcb32145499a35732274c7fc48deb434ad0d2e0e118f98527c1479c6fa251a"
 
-# NF 打补丁的并行度（FontForge 单次 136–330s，串行 36 次太久）
-PATCH_JOBS = 4
+# NF 打补丁的外层并行度。Docker patcher 自身还会按 PN 并行，
+# CI 通过 MOKAI_PATCH_JOBS=2 + PN=1 避免嵌套并行导致 runner 内存耗尽。
+PATCH_JOBS = int(_env_or("MOKAI_PATCH_JOBS", "4"))
 
 
 # ---------------------------------------------------------------------------

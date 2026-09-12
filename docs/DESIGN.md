@@ -119,6 +119,7 @@ Iosevka 的编程连字不是简单地把两个字形变成一个字形。
 
 每个变体使用独立的 patcher 输入 / 输出目录，避免并行构建发生输出串线。
 CI 使用按 digest 固定的 `nerdfonts/patcher` 镜像，FontPatcher.zip 同时校验 SHA-256。
+Docker patcher 内部固定 `PN=1`，流水线外层只开 2 路；本地默认 4 路，避免嵌套并行导致 CI runner 内存耗尽。
 
 ## 5. 展示图
 

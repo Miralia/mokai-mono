@@ -77,6 +77,9 @@ def _run_patcher(src: Path, tag: str) -> tuple[Path, float]:
         input_font = indir / src.name
         shutil.copy2(src, input_font)
         cmd = ["docker", "run", "--rm",
+               # 官方镜像内部也支持并行（PN）；外层线程池已经并行，
+               # 这里固定单进程，避免 4×PN 嵌套并行压垮 CI runner。
+               "-e", "PN=1",
                "-v", f"{indir.resolve()}:/in:ro",
                "-v", f"{outdir.resolve()}:/out",
                config.NERD_DOCKER_IMAGE,
