@@ -13,7 +13,7 @@ on:
         description: "LXGW ZhenKai tag"
         required: false
       release:
-        description: "Create a release after the build completes"
+        description: "Create or update the date-based release"
         type: boolean
         default: false
   workflow_call:
@@ -121,13 +121,27 @@ jobs:
           retention-days: 30
 
       - name: Create release
-        if: inputs.release == true || inputs.release == 'true'
+        if: ${{ success() && (github.event_name == 'push' || inputs.release == true || inputs.release == 'true') }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          tag="v${{ github.run_number }}-io${{ inputs.iosevka || '34.8.1' }}"
-          gh release create "$tag" \
-            --title "$tag" \
-            --generate-notes \
-            out/*.zip out/*.sha256 work/specimen/*.png
+          # Use UTC so the version is deterministic on GitHub-hosted runners.
+          version="$(date -u +'%Y.%m.%d')"
+          tag="v${version}"
+          assets=(out/*.zip out/*.sha256 work/specimen/*.png)
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Updating release ${tag}."
+            gh release upload "$tag" "${assets[@]}" --clobber
+          else
+            echo "Creating release ${tag}."
+            if ! gh release create "$tag" \
+              --target "$GITHUB_SHA" \
+              --title "MoKai Mono ${version}" \
+              --generate-notes \
+              "${assets[@]}"; then
+              # Another successful build may have created today's release first.
+              gh release view "$tag" >/dev/null 2>&1
+              gh release upload "$tag" "${assets[@]}" --clobber
+            fi
